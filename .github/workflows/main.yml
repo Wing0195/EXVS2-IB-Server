@@ -1,0 +1,57 @@
+name: Build C# Windows App
+
+on:
+  push:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild and Visual Studio Build Tools
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Restore NuGet packages
+        run: |
+          $sln = Get-ChildItem -Filter *.sln -Recurse | Select-Object -First 1
+          if ($sln) {
+            nuget restore $sln.FullName
+          } else {
+            Get-ChildItem -Filter *.csproj -Recurse | ForEach-Object {
+              dotnet restore $_.FullName
+            }
+          }
+
+      - name: Build Release
+        run: |
+          New-Item -ItemType Directory -Force -Path .\output | Out-Null
+          $sln = Get-ChildItem -Filter *.sln -Recurse | Select-Object -First 1
+          if ($sln) {
+            msbuild $sln.FullName /p:Configuration=Release /p:Platform="Any CPU" /p:OutDir="$PWD\output\"
+          } else {
+            $csproj = Get-ChildItem -Filter *.csproj -Recurse | Select-Object -First 1
+            if ($csproj) {
+              dotnet publish $csproj.FullName -c Release -o .\output
+            } else {
+              Write-Error "找不到 .sln 或 .csproj 專案檔，請確認倉庫結構。"
+              exit 1
+            }
+          }
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-output
+          path: ./output
